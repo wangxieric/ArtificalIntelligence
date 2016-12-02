@@ -142,7 +142,7 @@ def GetMissionInstance(mission_type, mission_seed, agent_type):
             <ServerInitialConditions>
               <Time>
                 <StartTime>6000</StartTime>
-                <AllowPassageOfTime>false</AllowPassageOfTime>
+                <AllowPassageOfTime>true</AllowPassageOfTime>
               </Time>
               <Weather>clear</Weather>
               <AllowSpawning>false</AllowSpawning>
@@ -294,7 +294,8 @@ def init_mission(agent_host, port=0, agent_type='Unknown', mission_type='Unknown
 # -- This class implements the Realistic Agent --#
 class AgentRealistic:
     def __init__(self, agent_host, agent_port, mission_type, mission_seed, solution_report, state_space):
-        """ Constructor for the realistic agent """
+        """ Constructor for the realistic agent
+        """
         self.AGENT_MOVEMENT_TYPE = 'Absolute'  # HINT: You can change this if you want {Absolute, Discrete, Continuous}
         self.AGENT_NAME = 'Realistic'
 
@@ -308,9 +309,6 @@ class AgentRealistic:
         self.solution_report.setMissionType(self.mission_type)
         self.solution_report.setMissionSeed(self.mission_seed)
 
-    def maze_value_euclidian(state,goal):
-        dist = math.pow(state[0]-goal[0],2) + math.pow(state[1]-goal[1],2)
-        return dist
 
 
     def run_agent(self):
@@ -322,15 +320,90 @@ class AgentRealistic:
         mission_xml = init_mission(self.agent_host, self.agent_port, self.AGENT_NAME, self.mission_type,
                                    self.mission_seed, self.AGENT_MOVEMENT_TYPE)
         self.solution_report.setMissionXML(mission_xml)
+        # --  set up a record
+        self.mission_record = MalmoPython.MissionRecordSpec('Agent_Reality_record.tgz')
+        self.mission_record.recordRewards()
+        self.mission_record.recordMP4(24,400000)
+
+        self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.LATEST_OBSERVATION_ONLY)
+        self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
+
+        time.sleep(1)
+
+        state_t = self.agent_host.getWorldState()
+        oracle = json.loads(state_t.observations[0].text)
         time.sleep(1)
         self.solution_report.start()
         print "goal_locations:"
         print self.goal_location
         # INSERT: YOUR SOLUTION HERE (REWARDS MUST BE UPDATED IN THE solution_report)
-        state_t = self.agent_host.getWorldState()
+
+        #state_b = self.agent_host.peekWorldState()
+
         for i in range(len(state_t.observations)):
+            print i
             msg = state_t.observations[i].text
             print "observation: " + msg
+
+        current = (oracle.get(u'XPos',0),oracle.get(u'ZPos',0))
+        print current
+        grid = oracle.get(u'grid',0)
+
+        print type(grid)
+        #direction = [[0,+1],[0,-1],[-1,0],[+1,0]]
+        limit = 100000
+        print "goal: "+ str(self.goal_location[0]) + " " + str(self.goal_location[1])
+        solution_path = [current]
+        k = 80
+        lam = 0.05
+        current = (oracle.get(u'XPos',0),oracle.get(u'ZPos',0))
+        deadEnd = []
+        for t in range(limit):
+            #print state_t.number_of_observations_since_last_state
+            if state_t.number_of_observations_since_last_state > 0:
+                print t
+                T = t
+                T = (k * math.exp(-lam * t) if t < limit else 0)
+                if T == 0:
+                    break
+                oracle = json.loads(state_t.observations[-1].text)
+                grid = oracle.get(u'grid',0)
+                for i in range(len(grid)):
+                    print "i: " + str(i) + grid[i]
+                neighbors = []
+                if grid[1] !="stone" and grid[1] != "stained_hardened_clay":
+                    neighbors.append((current[0],current[1]-1))
+                if grid[3] !="stone" and grid[3] != "stained_hardened_clay":
+                    neighbors.append((current[0]-1,current[1]))
+                if grid[5] !="stone" and grid[5] != "stained_hardened_clay":
+                    neighbors.append((current[0]+1,current[1]))
+                if grid[7] !="stone" and grid[7] != "stained_hardened_clay":
+                    neighbors.append((current[0],current[1]+1))
+                #print "current: " + str(current[0])+" "+str(current[1])
+                for i in range(len(neighbors)):
+                    print "neighbors: " + str(neighbors[i][0])+" "+str(neighbors[i][1])
+                if len(neighbors) == 0:
+                    deadEnd.append(current)
+                if len(neighbors) == 0:
+                    continue
+                next = random.choice(neighbors)
+                print "next: "+ str(next[0])+" "+ str(next[1])
+                self.agent_host.sendCommand("tp " + str(next[0]) + " " + str(217) + " " + str(next[1]))
+                time.sleep(0.1)
+                state_t = self.agent_host.getWorldState()
+                print "state"+ str(state_t.number_of_observations_since_last_state)
+                delta_e = math.pow(current[0]-self.goal_location[0],2) + math.pow(current[1]-self.goal_location[1],2) \
+                    - math.pow(next[0]-self.goal_location[0],2) - math.pow(next[1]-self.goal_location[1],2)
+                if delta_e > 0 or probability(math.exp(delta_e/float(T))):
+                    current = next
+                    solution_path.append(current)
+                    if math.floor(current[0]) == self.goal_location[0] and math.floor(current[1]) == self.goal_location[1]:
+                        print "find the goal!!!"
+                        break;
+        print solution_path
+        
+        #print len(state_t.observations)
+
         return
 
 
@@ -411,7 +484,7 @@ class AgentSimple:
         self.solution_report.setMissionXML(mission_xml)
 
         # -- set up a record
-        self.mission_record = MalmoPython.MissionRecordSpec('record.tgz')
+        self.mission_record = MalmoPython.MissionRecordSpec('agent_simple_record.tgz')
         self.mission_record.recordRewards()
         self.mission_record.recordMP4(24, 400000)
 
