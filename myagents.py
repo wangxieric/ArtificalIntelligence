@@ -313,7 +313,6 @@ class AgentRealistic:
 
     def run_agent(self):
         """ Run the Realistic agent and log the performance and resource use """
-
         # -- Load and init mission --#
         print('Generate and load the ' + self.mission_type + ' mission with seed ' + str(
             self.mission_seed) + ' allowing ' + self.AGENT_MOVEMENT_TYPE + ' movements')
@@ -327,6 +326,9 @@ class AgentRealistic:
 
         self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.LATEST_OBSERVATION_ONLY)
         self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
+        self.agent_host.setRewardsPolicy(MalmoPython.RewardsPolicy.LATEST_REWARD_ONLY)
+
+        reward_cumulative = 0.0
 
         time.sleep(1)
 
@@ -338,72 +340,83 @@ class AgentRealistic:
         print self.goal_location
         # INSERT: YOUR SOLUTION HERE (REWARDS MUST BE UPDATED IN THE solution_report)
 
-        #state_b = self.agent_host.peekWorldState()
-
-        for i in range(len(state_t.observations)):
-            print i
-            msg = state_t.observations[i].text
-            print "observation: " + msg
-
         current = (oracle.get(u'XPos',0),oracle.get(u'ZPos',0))
-        print current
         grid = oracle.get(u'grid',0)
-
-        print type(grid)
-        #direction = [[0,+1],[0,-1],[-1,0],[+1,0]]
         limit = 100000
-        print "goal: "+ str(self.goal_location[0]) + " " + str(self.goal_location[1])
         solution_path = [current]
         k = 80
         lam = 0.05
         current = (oracle.get(u'XPos',0),oracle.get(u'ZPos',0))
-        deadEnd = []
+        repeat_time = {}
+        repeat_time[current] = 1
+        flag = False
         for t in range(limit):
-            #print state_t.number_of_observations_since_last_state
+            # print state_t.number_of_observations_since_last_state
             if state_t.number_of_observations_since_last_state > 0:
-                print t
                 T = t
                 T = (k * math.exp(-lam * t) if t < limit else 0)
                 if T == 0:
                     break
                 oracle = json.loads(state_t.observations[-1].text)
-                grid = oracle.get(u'grid',0)
-                for i in range(len(grid)):
-                    print "i: " + str(i) + grid[i]
+                grid = oracle.get(u'grid', 0)
                 neighbors = []
-                if grid[1] !="stone" and grid[1] != "stained_hardened_clay":
-                    neighbors.append((current[0],current[1]-1))
-                if grid[3] !="stone" and grid[3] != "stained_hardened_clay":
-                    neighbors.append((current[0]-1,current[1]))
-                if grid[5] !="stone" and grid[5] != "stained_hardened_clay":
-                    neighbors.append((current[0]+1,current[1]))
-                if grid[7] !="stone" and grid[7] != "stained_hardened_clay":
-                    neighbors.append((current[0],current[1]+1))
-                #print "current: " + str(current[0])+" "+str(current[1])
-                for i in range(len(neighbors)):
-                    print "neighbors: " + str(neighbors[i][0])+" "+str(neighbors[i][1])
-                if len(neighbors) == 0:
-                    deadEnd.append(current)
+                if grid[1] != "stone" and grid[1] != "stained_hardened_clay":
+                    neighbors.append((current[0], current[1] - 1))
+                if grid[3] != "stone" and grid[3] != "stained_hardened_clay":
+                    neighbors.append((current[0] - 1, current[1]))
+                if grid[5] != "stone" and grid[5] != "stained_hardened_clay":
+                    neighbors.append((current[0] + 1, current[1]))
+                if grid[7] != "stone" and grid[7] != "stained_hardened_clay":
+                    neighbors.append((current[0], current[1] + 1))
+                flag = False
+                for n in neighbors:
+                    if math.floor(n[0]) == self.goal_location[0] and math.floor(n[1]) == self.goal_location[1]:
+                        next = n
+                        self.agent_host.sendCommand("tp " + str(next[0]) + " " + str(217) + " " + str(next[1]))
+                        solution_path.append(next)
+                        print "find the goal!!!"
+                        flag = True
+                        break
+                if flag:
+                    break
                 if len(neighbors) == 0:
                     continue
                 next = random.choice(neighbors)
-                print "next: "+ str(next[0])+" "+ str(next[1])
                 self.agent_host.sendCommand("tp " + str(next[0]) + " " + str(217) + " " + str(next[1]))
                 time.sleep(0.1)
                 state_t = self.agent_host.getWorldState()
-                print "state"+ str(state_t.number_of_observations_since_last_state)
-                delta_e = math.pow(current[0]-self.goal_location[0],2) + math.pow(current[1]-self.goal_location[1],2) \
-                    - math.pow(next[0]-self.goal_location[0],2) - math.pow(next[1]-self.goal_location[1],2)
-                if delta_e > 0 or probability(math.exp(delta_e/float(T))):
-                    current = next
-                    solution_path.append(current)
-                    if math.floor(current[0]) == self.goal_location[0] and math.floor(current[1]) == self.goal_location[1]:
-                        print "find the goal!!!"
-                        break;
-        print solution_path
-        
-        #print len(state_t.observations)
 
+                for reward_t in state_t.rewards:
+                    if reward_t.getValue() + 10 <= 1e-6:
+                        print "Reward_t:", 10
+                        reward_cumulative += 10
+                        self.solution_report.addReward(10, datetime.datetime.now())
+                    else:
+                        print "Reward_t:", reward_t.getValue()
+                        reward_cumulative += reward_t.getValue()
+                        self.solution_report.addReward(reward_t.getValue(), datetime.datetime.now())
+                print "reward_cumulative:",reward_cumulative
+                delta_e = math.pow(current[0] - self.goal_location[0], 2) + math.pow(current[1] - self.goal_location[1],2) + repeat_time[current]\
+                          - math.pow(next[0] - self.goal_location[0], 2) - math.pow(next[1] - self.goal_location[1], 2)
+                if next in repeat_time:
+                    delta_e -= repeat_time[next]
+                if delta_e > 0 or probability(math.exp(delta_e / float(T))):
+                    current = next
+                    if next in repeat_time:
+                        repeat_time[next] = repeat_time[next] + 1
+                    else:
+                        repeat_time[next] = 1
+                    solution_path.append(current)
+                    if math.floor(current[0]) == self.goal_location[0] and math.floor(current[1]) == self.goal_location[
+                        1]:
+                        flag = True
+                        print "find the goal!!!"
+                        break
+        if flag:
+            reward_cumulative += 1000
+            print reward_cumulative
+            self.solution_report.addReward(1000, datetime.datetime.now())
+        print solution_path
         return
 
 
@@ -500,6 +513,7 @@ class AgentSimple:
 
         self.agent_host.setObservationsPolicy(MalmoPython.ObservationsPolicy.LATEST_OBSERVATION_ONLY)
         self.agent_host.setVideoPolicy(MalmoPython.VideoPolicy.LATEST_FRAME_ONLY)
+        self.agent_host.setRewardsPolicy(MalmoPython.RewardsPolicy.KEEP_ALL_REWARDS)
 
         reward_cumulative = 0.0
 
@@ -562,8 +576,14 @@ class AgentSimple:
             # Collect the number of rewards and add to reward_cumulative
             # Note: Since we only observe the sensors and environment every a number of rewards may have accumulated in the buffer
             for reward_t in state_t.rewards:
-                print "Reward_t:", reward_t.getValue()
-                reward_cumulative += reward_t.getValue()
+                if reward_t.getValue() + 10 <=1e-6:
+                    print "Reward_t:", 10
+                    reward_cumulative += 10
+                    self.solution_report.addReward(10, datetime.datetime.now())
+                else:
+                    print "Reward_t:", reward_t.getValue()
+                    reward_cumulative += reward_t.getValue()
+                    self.solution_report.addReward(reward_t.getValue(),datetime.datetime.now())
 
             # Check if anything went wrong along the way
             for error in state_t.errors:
@@ -571,13 +591,16 @@ class AgentSimple:
 
             # Handle the percepts
             if target_node.state == self.state_space.goal_id:
+                reward_cumulative += 1000
+                self.solution_report.addReward(1000,datetime.datetime.now())
                 break
-                tmp = [self.state_space.state_locations[self.state_space.goal_id][0],self.state_space.state_locations[self.state_space.goal_id][1]-0.5]
+
             xpos = None
             ypos = None
             zpos = None
             yaw = None
             pitch = None
+
             if state_t.number_of_observations_since_last_state > 0:  # Has any Oracle-like and/or internal sensor observations come in?
                 msg = state_t.observations[-1].text  # Get the detailed for the last observed state
                 oracle = json.loads(msg)  # Parse the Oracle JSON
@@ -689,8 +712,15 @@ class AgentRandom:
             # -- Collect the number of rewards and add to reward_cumulative  --#
             # -- Note: Since we only observe the sensors and environment every a number of rewards may have accumulated in the buffer  --#
             for reward_t in state_t.rewards:
-                print("Reward_t:", reward_t.getValue())
-                self.solution_report.addReward(reward_t.getValue(), datetime.datetime.now())
+                if reward_t.getValue() + 10 <=1e-6:
+                    print "Reward_t:", 10
+                    reward_cumulative += 10
+                    self.solution_report.addReward(10, datetime.datetime.now())
+                else:
+                    print "Reward_t:", reward_t.getValue()
+                    reward_cumulative += reward_t.getValue()
+                    self.solution_report.addReward(reward_t.getValue(),datetime.datetime.now())
+
 
             # -- Check if anything went wrong along the way  --#
             for error in state_t.errors:
@@ -735,10 +765,10 @@ class AgentRandom:
                 # Depth: Your can get a pre-computed depth image the state_t.video_frames[0].pixels
 
             # -- Print some of the state information --#
-            print("video,observations,rewards received:", state_t.number_of_video_frames_since_last_state,
-                  state_t.number_of_observations_since_last_state, state_t.number_of_rewards_since_last_state)
-            print("\t x,y,z,yaw,pitch:", xpos, ypos, zpos, yaw, pitch)
-            print('\tRadius X surroundings: ' + str(grid))
+            #print("video,observations,rewards received:", state_t.number_of_video_frames_since_last_state,
+            #      state_t.number_of_observations_since_last_state, state_t.number_of_rewards_since_last_state)
+            #print("\t x,y,z,yaw,pitch:", xpos, ypos, zpos, yaw, pitch)
+            #print('\tRadius X surroundings: ' + str(grid))
 
         print(
         "Mission has ended ... either because time has passed (negative reward) or goal reached (positive reward)")
@@ -1034,9 +1064,11 @@ if __name__ == "__main__":
                 agent_name + '(agent_host,args.malmoport,args.missiontype,i_training_seed,solution_report,state_space)')
 
             print('Run the agent, time it and log the performance...')
+            start_time = time.time()
             solution_report.start()  # start the timer (may be overwritten in the agent to provide a fair comparison)
             agent_to_be_evaluated.run_agent()
             solution_report.stop()  # stop the timer
+            print "-----%s seconds-----" % (time.time() - start_time)
 
             print("\n---------------------------------------------")
             print("| Solution Report Summary: ")
