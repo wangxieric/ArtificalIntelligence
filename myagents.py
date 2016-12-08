@@ -544,7 +544,7 @@ class AgentSimple:
         solution_path_local= deepcopy(solution_path)
         # -- Main loop: --#
         state_t = self.agent_host.getWorldState()
-        # while state_t.is_mission_running():
+
         while state_t.is_mission_running:
 
             # This is a teleportation agent
@@ -560,14 +560,13 @@ class AgentSimple:
                     xz_new = agent_simple_map.locations.get(target_node.state);
                     x_new = xz_new[0] + 0.5
                     z_new = xz_new[1] + 0.5
-                #as for now, the command still cannot work well
                 self.agent_host.sendCommand("tp "+str(x_new)+ " " +str(217)+ " " +str(z_new))
                 print "tp "+str(x_new)+ " " +str(217)+ " " +str(z_new)
             except RuntimeError as e:
                 print "Failed to send command:", e
                 pass
 
-                # Wait a sec
+            # Wait a sec
             time.sleep(0.5)
 
             # Get the world state
@@ -712,14 +711,9 @@ class AgentRandom:
             # -- Collect the number of rewards and add to reward_cumulative  --#
             # -- Note: Since we only observe the sensors and environment every a number of rewards may have accumulated in the buffer  --#
             for reward_t in state_t.rewards:
-                if reward_t.getValue() + 10 <=1e-6:
-                    print "Reward_t:", 10
-                    reward_cumulative += 10
-                    self.solution_report.addReward(10, datetime.datetime.now())
-                else:
-                    print "Reward_t:", reward_t.getValue()
-                    reward_cumulative += reward_t.getValue()
-                    self.solution_report.addReward(reward_t.getValue(),datetime.datetime.now())
+                print "Reward_t:", reward_t.getValue()
+                #reward_cumulative += reward_t.getValue()
+                self.solution_report.addReward(reward_t.getValue(),datetime.datetime.now())
 
 
             # -- Check if anything went wrong along the way  --#
@@ -959,8 +953,8 @@ class AgentHelper:
 if __name__ == "__main__":
 
     # -- Define default arguments, in case you run the module as a script --#
-    DEFAULT_STUDENT_GUID = 'template'
-    DEFAULT_AGENT_NAME = 'Realistic'  # HINT: Currently choose between {Random,Simple, Realistic}
+    DEFAULT_STUDENT_GUID = '2233495w'
+    DEFAULT_AGENT_NAME = 'Simple'  # HINT: Currently choose between {Random,Simple, Realistic}
     DEFAULT_MALMO_PATH = '/home/eric/Documents/Malmo-0.18.0-Linux-Ubuntu-15.10-64bit/'  # HINT: Change this to your own path, forward slash only!
     DEFAULT_AIMA_PATH = '/home/eric/Documents/AI_lab/aima-python/'  # HINT: Change this to your own path, forward slash only, should be the 2.7 version from https://www.dropbox.com/s/vulnv2pkbv8q92u/aima-python_python_v27_r001.zip?dl=0)
     DEFAULT_MISSION_TYPE = 'small'  # HINT: Choose between {small,medium,large}
